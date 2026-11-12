@@ -6,6 +6,7 @@
 Design: the "Board" placeholder in the Petrol theme. An 8 x 8 board fills the screen; the squares the queen attacks are
 tinted and her eight rays run to the edges. The full site lives on the local branch content-draft.
 """
+import json
 import sys
 from pathlib import Path
 
@@ -89,6 +90,32 @@ h1{{margin:10px 0 14px;font:600 clamp(32px,3.6vw,46px)/1.08 Manrope;letter-spaci
 """
 
 
+PERSON = "https://blog.korolevalab.com/#person"
+ORG = URL + "#organization"
+# Structured data for search engines, not shown on the page: the lab, its founder (the same Person the blog describes,
+# by the same @id, so search engines can join the two sites) and the website.
+LD_GRAPH = {
+    "@context": "https://schema.org",
+    "@graph": [
+        {"@type": "Organization", "@id": ORG, "name": "Koroleva Lab", "alternateName": "Koroleva Research", "url": URL,
+         "logo": {"@type": "ImageObject", "url": URL + "logo.png", "width": 512, "height": 512}, "image": URL + "og.png",
+         "email": EMAIL, "description": "Modern AI market analytics: market structure, systematic strategies and event risk.",
+         "founder": {"@id": PERSON},
+         "sameAs": ["https://github.com/korolevalab", "https://www.crunchbase.com/organization/koroleva-research"]},
+        {"@type": "Person", "@id": PERSON, "name": "Eva Koroleva", "url": "https://blog.korolevalab.com/about/",
+         "image": "https://blog.korolevalab.com/assets/img/eva_koroleva.jpg", "worksFor": {"@id": ORG},
+         "sameAs": ["https://blog.korolevalab.com/", "https://orcid.org/0009-0005-4637-4176",
+                    "https://scholar.google.com/citations?user=q9sm0sgAAAAJ", "https://github.com/xmarva",
+                    "https://www.linkedin.com/in/e-koroleva", "https://twitter.com/crazyruskaya",
+                    "https://www.wikidata.org/wiki/Q142104051", "https://www.crunchbase.com/person/eva-koroleva",
+                    "https://huggingface.co/xmarva", "https://www.kaggle.com/qmarva"]},
+        {"@type": "WebSite", "@id": URL + "#website", "name": "Koroleva Lab", "url": URL, "inLanguage": "en",
+         "publisher": {"@id": ORG}},
+    ],
+}
+LD = '<script type="application/ld+json">' + json.dumps(LD_GRAPH, ensure_ascii=False, separators=(",", ":")) + "</script>"
+
+
 def head(title, desc, canonical=True):
     return f"""<!doctype html>
 <html lang="en">
@@ -108,7 +135,7 @@ def head(title, desc, canonical=True):
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#ffffff">
 <link rel="preload" href="/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
-<script type="application/ld+json">{{"@context":"https://schema.org","@type":"Organization","name":"Koroleva Lab","url":"{URL}","email":"{EMAIL}"}}</script>
+{LD if canonical else ""}
 <style>{CSS}</style>
 </head>
 """
@@ -142,10 +169,30 @@ def not_found():
 """
 
 
+def logo_png():
+    """The mark as a 512 px PNG: search engines want a raster logo of at least 112 px for the organisation."""
+    from playwright.sync_api import sync_playwright
+    chrome = str(next(Path.home().glob("Library/Caches/ms-playwright/chromium_headless_shell-1248/*/chrome-headless-shell")))
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=chrome)
+        pg = b.new_page(viewport={"width": 512, "height": 512}, device_scale_factor=1)
+        size, pad = 416, 48
+        mark = queen(size, INK, ACC, sw=9).replace("<rect x=", "<rect class=f x=", 1)
+        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" fill="{BG}"/>'
+               f'<defs><clipPath id="c"><rect width="{size}" height="{size}"/></clipPath></defs>'
+               f'<g transform="translate({pad},{pad})" clip-path="url(#c)">{mark}</g>'
+               f'<rect x="{pad + 6}" y="{pad + 6}" width="{size - 12}" height="{size - 12}" fill="none" stroke="{INK}" stroke-width="12"/></svg>')
+        pg.set_content(f'<html><body style="margin:0">{svg}</body></html>')
+        pg.screenshot(path=str(HERE / "logo.png"))
+        b.close()
+
+
 def main():
     (HERE / "index.html").write_text(page())
     (HERE / "404.html").write_text(not_found())
     (HERE / "favicon.svg").write_text(FAVICON)
+    if "--og" in sys.argv or not (HERE / "logo.png").exists():
+        logo_png()
     (HERE / "robots.txt").write_text(f"User-agent: *\nAllow: /\n\nSitemap: {URL}sitemap.xml\n")
     (HERE / "sitemap.xml").write_text(f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
                                       f"<url><loc>{URL}</loc></url></urlset>\n")
